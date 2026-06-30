@@ -55,11 +55,7 @@ html, body {
 /*** 卡片容器 ***/
 .container {
   position: relative;
-  width: 320px;
-  height: 320px;
   max-width: 500px;
-  /* 不兼容 */
-  /* aspect-ratio: 16/16; */
 }
 
 /*** 卡片 ***/

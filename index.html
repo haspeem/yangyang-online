@@ -95,6 +95,13 @@
             return (Math.random() + new Date().getTime()).toString(32).slice(0,length);
         }
 
+        const gameTimers = [];
+
+        const clearGameTimers = () => {
+          gameTimers.forEach(id => clearTimeout(id));
+          gameTimers.length = 0;
+        }
+
         onMounted(() => {
           getDoMInfo();
         })
@@ -138,14 +145,20 @@
           handleReset();
         });
         watch(() => config.row, () => {
-          getDoMInfo();
-          data.select.clear();
-          data.cards = [];
+          clearGameTimers();
+          Vue.nextTick(() => {
+            getDoMInfo();
+            data.select.clear();
+            data.cards = [];
+          });
         });
         watch(() => config.col, () => {
-          getDoMInfo();
-          data.select.clear();
-          data.cards = [];
+          clearGameTimers();
+          Vue.nextTick(() => {
+            getDoMInfo();
+            data.select.clear();
+            data.cards = [];
+          });
         });
 
         /**
@@ -271,6 +284,7 @@
          * 重置游戏
          */
         const handleReset = () => {
+          clearGameTimers();
           // 清空已有的卡片
           data.cards.length = 0;
           data.select.clear();
@@ -321,12 +335,13 @@
           };
 
            // 校验卡片卡槽卡片数量长度
-          setTimeout(() => {
+          const failTimer = setTimeout(() => {
             if(selectLength.value >= config.selectMaxLength) {
               alert('游戏失败 重新开始');
               handleReset();
             }
-          }, config.animationTime);
+          }, config.animationTime + 100);
+          gameTimers.push(failTimer);
 
         }
 
@@ -368,7 +383,7 @@
               item.clear = true;
             })
             
-            setTimeout(() => {
+            const hideTimer = setTimeout(() => {
               // 删除卡槽中卡片
               data.select.delete(cards[0].icon);
               // 删除cards中的卡片 软删除 display代替
@@ -376,8 +391,9 @@
                 item.display = true;
               })
             }, config.animationTime);
+            gameTimers.push(hideTimer);
 
-            setTimeout(() => {
+            const checkTimer = setTimeout(() => {
               // 属性卡槽卡片位置
               refreshCardPosition();
 
@@ -389,12 +405,11 @@
                 data.level++;
               }
               if (!hasCards.length && level >= config.maxLevel) {
-                {
                 alert('恭喜 🎉🎉 游戏通关咯 即将回到第一关');
                 data.level = 1;
               }
-              }
-            }, config.animationTime + 100);
+            }, config.animationTime + 200);
+            gameTimers.push(checkTimer);
           }
         }
 
