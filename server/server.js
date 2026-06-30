@@ -47,8 +47,8 @@ function generateBoard(config, level) {
       cards.push({
         id: randomId(6),
         icon,
-        x: c * base + offset,
-        y: r * base + offset,
+        x: Math.max(4, Math.min(col * base - base, c * base + offset)),
+        y: Math.max(4, Math.min(row * base - base, r * base + offset)),
         not: true,
         status: 0,
         clear: false,

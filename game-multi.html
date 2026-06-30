@@ -97,15 +97,35 @@
             </div>
           </div>
         </div>
-          <div class="card-slot" :style="'width:' + (7 * config.base + 8) + 'px'"></div>
+        <div class="card-slot" :style="'width:' + (7 * config.base + 8) + 'px'"></div>
+      </div>
+
+      <div v-if="showLevelUp" class="result-mask">
+        <div class="result-box">
+          <div class="result-icon">🎉</div>
+          <div class="result-text">第{{ level }}关通过！</div>
+          <div class="result-sub">协作成功，是否继续？</div>
+          <div class="mp-row" style="justify-content:center">
+            <button class="mp-btn green sm" @click="continueLevel">继续下一关</button>
+            <button class="mp-btn gray sm" @click="backToLobby">退出</button>
+          </div>
+        </div>
       </div>
 
       <div v-if="showResult" class="result-mask">
         <div class="result-box">
           <div class="result-icon">{{ resultWon ? '🎉' : '😢' }}</div>
-          <div class="result-text">{{ resultWon ? '通关成功！' : '游戏失败' }}</div>
+          <div class="result-text">{{ resultWon ? '全部通关！' : '闯关失败' }}</div>
           <div class="result-sub">{{ resultMessage }}</div>
-          <button class="mp-btn" @click="backToLobby">返回大厅</button>
+          <div v-if="resultWon">
+            <button class="mp-btn" @click="backToLobby">返回大厅</button>
+          </div>
+          <div v-else>
+            <div class="mp-row" style="justify-content:center">
+              <button v-if="isHost" class="mp-btn green sm" @click="retryGame">再试一次</button>
+              <button class="mp-btn gray sm" @click="backToLobby">退出</button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -132,6 +152,8 @@
         var showResult = Vue.ref(false)
         var resultWon = Vue.ref(false)
         var resultMessage = Vue.ref('')
+        var showLevelUp = Vue.ref(false)
+        var levelUpData = null
         var config = Vue.reactive({
           base: 48, row: 8, col: 8,
           selectMaxLength: 7, maxCount: 3,
@@ -192,6 +214,8 @@
 
         function setupListeners() {
           socket.on('game_started', function (d) {
+            showResult.value = false
+            showLevelUp.value = false
             page.value = 'game'
             Vue.nextTick(function () {
               refreshSlotOffset()
@@ -207,10 +231,8 @@
             isMyTurn.value = d.nextTurn === socket.id
           })
           socket.on('level_up', function (d) {
-            refreshSlotOffset()
-            applyState(d.gameState)
-            isMyTurn.value = d.nextTurn === socket.id
-            level.value = d.gameState.level || 1
+            levelUpData = d
+            showLevelUp.value = true
           })
           socket.on('game_over', function (d) {
             if (elimTimer) clearTimeout(elimTimer)
@@ -335,7 +357,29 @@
         function resetVars() {
           roomCode.value = ''; isHost.value = false; players.value = []; iAmReady.value = false
           isMyTurn.value = false; myNickname.value = ''; oppNickname.value = ''
-          cards.value = []; level.value = 1; showResult.value = false
+          cards.value = []; level.value = 1; showResult.value = false; showLevelUp.value = false
+          levelUpData = null
+        }
+
+        function continueLevel() {
+          if (!levelUpData) return
+          showLevelUp.value = false
+          refreshSlotOffset()
+          applyState(levelUpData.gameState)
+          isMyTurn.value = levelUpData.nextTurn === socket.id
+          level.value = levelUpData.gameState.level || 1
+          levelUpData = null
+        }
+
+        function retryGame() {
+          showResult.value = false
+          cards.value = []
+          socket.emit('start_game', {
+            level: 1, base: config.base, row: config.row, col: config.col,
+            maxCount: config.maxCount, selectMaxLength: config.selectMaxLength,
+            animationTime: config.animationTime, maxLevel: config.maxLevel,
+            slotY: config.row * config.base + 8
+          })
         }
 
         function leaveRoom() { cleanup(); resetVars(); page.value = 'room' }
@@ -345,10 +389,12 @@
           page, nickname, joinCode, roomCode, isHost, players,
           iAmReady, isMyTurn, myNickname, oppNickname,
           cards, level, showResult, resultWon, resultMessage,
+          showLevelUp,
           config, allReady, containerStyle,
           setCardStyle, setAnimation,
           createRoom, joinRoom, toggleReady, startGame,
-          handleCardClick, leaveRoom, backToLobby
+          handleCardClick, continueLevel, retryGame,
+          leaveRoom, backToLobby
         }
       }
     }
