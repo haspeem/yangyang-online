@@ -72,7 +72,6 @@ CustomAudio.prototype.playClickBgm = function () {
 // 重播消除声
 CustomAudio.prototype.rePlayClickBgm = function () {
   if (this.clickBgmAudio) {
-    this.clickBgmAudio.pause();
     this.clickBgmAudio.currentTime = 0;
     this.playClickBgm();
     this.playClickStatus = false;
