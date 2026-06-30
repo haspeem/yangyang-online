@@ -84,20 +84,20 @@
         </div>
       </div>
       <div class="wrap">
-          <div class="container" :style="containerStyle">
-            <div class="card-wrap"
-              v-for="(item, index) in cards"
-              :key="item.id"
-              :style="setCardStyle(item)">
-              <div class="card"
-                :class="[item.not && 'is-allow', item.clear && 'clearing', item.display && 'hidden']"
-                :style="setAnimation(item)"
-                @click="handleCardClick(index)">
-                <span>{{ item.icon }}</span>
-              </div>
+        <div class="container" :style="containerStyle">
+          <div class="card-wrap"
+            v-for="(item, index) in cards"
+            :key="item.id"
+            :style="setCardStyle(item)">
+            <div class="card"
+              :class="[item.not && 'is-allow', item.clear && 'clearing', item.display && 'hidden']"
+              :style="setAnimation(item)"
+              @click="handleCardClick(index)">
+              <span>{{ item.icon }}</span>
             </div>
           </div>
-          <div class="card-slot" :style="'width:' + (config.col * config.base + 8) + 'px'"></div>
+        </div>
+          <div class="card-slot" :style="'width:' + (7 * config.base + 8) + 'px'"></div>
       </div>
 
       <div v-if="showResult" class="result-mask">
@@ -133,10 +133,11 @@
         var resultWon = Vue.ref(false)
         var resultMessage = Vue.ref('')
         var config = Vue.reactive({
-          base: 48, row: 7, col: 7,
+          base: 48, row: 8, col: 8,
           selectMaxLength: 7, maxCount: 3,
           animationTime: 400, maxLevel: 10
         })
+        var slotOffset = Vue.ref({ x: 0, y: 0 })
 
         var allReady = Vue.computed(function () {
           return players.value.length === 2 && players.value.every(function (p) { return p.ready })
@@ -161,6 +162,16 @@
 
         var elimTimer = null
 
+        function refreshSlotOffset() {
+          var cd = document.querySelector('#game .container')
+          var sd = document.querySelector('.card-slot')
+          if (cd && sd) {
+            var cr = cd.getBoundingClientRect()
+            var sr = sd.getBoundingClientRect()
+            slotOffset.value = { x: sr.left - cr.left, y: sr.top - cr.top }
+          }
+        }
+
         function getUrl() {
           var loc = window.location
           if (loc.hostname === 'localhost' || loc.hostname === '127.0.0.1') return 'http://localhost:3000'
@@ -181,18 +192,22 @@
 
         function setupListeners() {
           socket.on('game_started', function (d) {
-            applyState(d.gameState)
-            isMyTurn.value = d.currentPlayer === socket.id
-            myNickname.value = (d.players.find(function (p) { return p.id === socket.id }) || {}).nickname || ''
-            oppNickname.value = (d.players.find(function (p) { return p.id !== socket.id }) || {}).nickname || ''
-            level.value = d.gameState.level || 1
             page.value = 'game'
+            Vue.nextTick(function () {
+              refreshSlotOffset()
+              applyState(d.gameState)
+              isMyTurn.value = d.currentPlayer === socket.id
+              myNickname.value = (d.players.find(function (p) { return p.id === socket.id }) || {}).nickname || ''
+              oppNickname.value = (d.players.find(function (p) { return p.id !== socket.id }) || {}).nickname || ''
+              level.value = d.gameState.level || 1
+            })
           })
           socket.on('card_clicked', function (d) {
             applyState(d.gameState)
             isMyTurn.value = d.nextTurn === socket.id
           })
           socket.on('level_up', function (d) {
+            refreshSlotOffset()
             applyState(d.gameState)
             isMyTurn.value = d.nextTurn === socket.id
             level.value = d.gameState.level || 1
@@ -223,6 +238,18 @@
             return {
               id: sc.id, icon: sc.icon, x: sc.x, y: sc.y,
               not: sc.not, status: sc.status, clear: sc.clear, display: sc.display
+            }
+          })
+
+          /* recalculate slot card positions using DOM coordinates */
+          var gh = config.row * config.base
+          var so = slotOffset.value
+          var idx = 0
+          cards.value.forEach(function (c) {
+            if (c.y >= gh && !c.display) {
+              c.x = idx * config.base + so.x + config.base / 2 + 4
+              c.y = so.y + 2
+              idx++
             }
           })
 
@@ -283,7 +310,12 @@
         }
 
         function startGame() {
-          socket.emit('start_game', { level: 1, base: 48, row: 7, col: 7, maxCount: 3, selectMaxLength: 7, animationTime: 400, maxLevel: 10, slotY: config.row * config.base + 8 })
+          socket.emit('start_game', {
+            level: 1, base: config.base, row: config.row, col: config.col,
+            maxCount: config.maxCount, selectMaxLength: config.selectMaxLength,
+            animationTime: config.animationTime, maxLevel: config.maxLevel,
+            slotY: config.row * config.base + 8
+          })
         }
 
         function handleCardClick(index) {
