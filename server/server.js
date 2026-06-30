@@ -331,6 +331,16 @@ io.on('connection', (socket) => {
     });
   });
 
+  socket.on('level_continue', () => {
+    if (!currentRoomCode) return;
+    socket.to(currentRoomCode).emit('level_continue');
+  });
+
+  socket.on('level_exit', () => {
+    if (!currentRoomCode) return;
+    socket.to(currentRoomCode).emit('level_exit');
+  });
+
   socket.on('disconnect', () => {
     if (currentRoomCode) {
       const room = rooms.get(currentRoomCode);

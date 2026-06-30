@@ -107,7 +107,7 @@
           <div class="result-sub">协作成功，是否继续？</div>
           <div class="mp-row" style="justify-content:center">
             <button class="mp-btn green sm" @click="continueLevel">继续下一关</button>
-            <button class="mp-btn gray sm" @click="backToLobby">退出</button>
+            <button class="mp-btn gray sm" @click="exitLevel">退出</button>
           </div>
         </div>
       </div>
@@ -235,6 +235,12 @@
             levelUpData = d
             showLevelUp.value = true
           })
+          socket.on('level_continue', function () {
+            applyLevelUp()
+          })
+          socket.on('level_exit', function () {
+            backToLobby()
+          })
           socket.on('game_over', function (d) {
             if (elimTimer) clearTimeout(elimTimer)
             resultWon.value = d.winner === socket.id
@@ -349,8 +355,10 @@
           if (elimTimer) clearTimeout(elimTimer)
           if (socket) {
             socket.off('connect'); socket.off('disconnect'); socket.off('error_msg')
-            socket.off('game_started'); socket.off('card_clicked'); socket.off('level_up'); socket.off('game_over')
-            socket.off('opponent_disconnected'); socket.off('player_joined'); socket.off('player_ready_update')
+            socket.off('game_started'); socket.off('card_clicked')
+            socket.off('level_up'); socket.off('level_continue'); socket.off('level_exit')
+            socket.off('game_over'); socket.off('opponent_disconnected')
+            socket.off('player_joined'); socket.off('player_ready_update')
             socket.off('room_created'); socket.disconnect(); socket = null
           }
         }
@@ -362,7 +370,7 @@
           levelUpData = null
         }
 
-        function continueLevel() {
+        function applyLevelUp() {
           if (!levelUpData) return
           showLevelUp.value = false
           refreshSlotOffset()
@@ -370,6 +378,12 @@
           isMyTurn.value = levelUpData.nextTurn === socket.id
           level.value = levelUpData.gameState.level || 1
           levelUpData = null
+        }
+
+        function continueLevel() {
+          if (!levelUpData) return
+          socket.emit('level_continue')
+          applyLevelUp()
         }
 
         function retryGame() {
@@ -383,6 +397,10 @@
           })
         }
 
+        function exitLevel() {
+          if (socket) socket.emit('level_exit')
+          backToLobby()
+        }
         function leaveRoom() { cleanup(); resetVars(); page.value = 'room' }
         function backToLobby() { cleanup(); resetVars(); page.value = 'mode' }
 
@@ -394,7 +412,7 @@
           config, allReady, containerStyle,
           setCardStyle, setAnimation,
           createRoom, joinRoom, toggleReady, startGame,
-          handleCardClick, continueLevel, retryGame,
+          handleCardClick, continueLevel, retryGame, exitLevel,
           leaveRoom, backToLobby
         }
       }
