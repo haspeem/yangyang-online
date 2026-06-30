@@ -100,10 +100,10 @@
         <div class="card-slot" :style="'width:' + (7 * config.base + 8) + 'px'"></div>
       </div>
 
-      <div v-if="showLevelUp" class="result-mask">
+      <div v-if="showLevelUp" class="result-mask" style="z-index:200">
         <div class="result-box">
           <div class="result-icon">🎉</div>
-          <div class="result-text">第{{ level }}关通过！</div>
+          <div class="result-text">第{{ levelUpData ? levelUpData.gameState.level - 1 : level }}关通过！</div>
           <div class="result-sub">协作成功，是否继续？</div>
           <div class="mp-row" style="justify-content:center">
             <button class="mp-btn green sm" @click="continueLevel">继续下一关</button>
@@ -227,6 +227,7 @@
             })
           })
           socket.on('card_clicked', function (d) {
+            if (showLevelUp.value || showResult.value) return
             applyState(d.gameState)
             isMyTurn.value = d.nextTurn === socket.id
           })
