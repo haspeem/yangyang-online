@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>🐑 羊了个羊 - 联机对战</title>
+  <link rel="stylesheet" href="index.css">
+  <link rel="stylesheet" href="client/css/multiplayer.css">
+  <script src="https://unpkg.com/vue@3.2.12/dist/vue.global.js"></script>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+</head>
+<body>
+  <div id="app">
+
+    <!-- 模式选择 -->
+    <div v-if="page === 'mode'" class="mp-page">
+      <div class="mp-box">
+        <div class="mp-big-icon">🔄</div>
+        <div class="mp-title">轮流对战</div>
+        <p class="mp-desc">两人轮流点击卡片，协作消除所有卡片即为通关</p>
+        <button class="mp-btn" @click="page='nickname'">开始</button>
+        <a href="index.html" class="mp-link">返回首页</a>
+      </div>
+    </div>
+
+    <!-- 昵称 -->
+    <div v-if="page === 'nickname'" class="mp-page">
+      <div class="mp-box">
+        <div class="mp-title">输入昵称</div>
+        <input class="mp-input" v-model="nickname" placeholder="昵称（最多 8 字）" maxlength="8" @keyup.enter="page='room'">
+        <button class="mp-btn" @click="page='room'" :disabled="!nickname.trim()">下一步</button>
+        <button class="mp-link" @click="page='mode'">返回</button>
+      </div>
+    </div>
+
+    <!-- 房间 -->
+    <div v-if="page === 'room'" class="mp-page">
+      <div class="mp-box">
+        <div class="mp-title">联机房间</div>
+        <button class="mp-btn" @click="createRoom">创建房间</button>
+        <div class="mp-or">或</div>
+        <div class="mp-row">
+          <input class="mp-input mp-code" v-model="joinCode" placeholder="房间号" maxlength="6" @keyup.enter="joinRoom">
+          <button class="mp-btn sm" @click="joinRoom">加入</button>
+        </div>
+        <button class="mp-link" @click="page='nickname'">返回</button>
+      </div>
+    </div>
+
+    <!-- 等待 -->
+    <div v-if="page === 'waiting'" class="mp-page">
+      <div class="mp-box">
+        <div class="mp-title">房间 {{ roomCode }}</div>
+        <div class="mp-players">
+          <div class="mp-pcard" v-for="p in players" :key="p.id" :class="{ ok: p.ready }">
+            <div class="mp-pavatar">{{ p.isHost ? '🐺' : '🐑' }}</div>
+            <div class="mp-pname">{{ p.nickname }}</div>
+            <div class="mp-prole">{{ p.isHost ? '房主' : '玩家' }}</div>
+            <div class="mp-pstatus">{{ p.ready ? '✅ 已准备' : '⏳ 等待' }}</div>
+          </div>
+        </div>
+        <p v-if="players.length < 2" class="mp-hint">将房间号发给好友</p>
+        <p v-else class="mp-hint">双方均已加入</p>
+        <button v-if="!iAmReady" class="mp-btn" @click="toggleReady">准备</button>
+        <button v-else class="mp-btn gray" @click="toggleReady">取消准备</button>
+        <button v-if="isHost && allReady" class="mp-btn green" @click="startGame" style="margin-top:8px">开始游戏</button>
+        <button class="mp-link" @click="leaveRoom">退出</button>
+      </div>
+    </div>
+
+    <!-- ========== 游戏 ========== -->
+    <div v-if="page === 'game'" id="game">
+      <div class="multi-bar">
+        <div class="multi-left">
+          <span class="dot g"></span>
+          <span class="name">{{ myNickname }}</span>
+          <span class="turn" :class="isMyTurn ? 'on' : 'off'">{{ isMyTurn ? '出手' : '等待' }}</span>
+        </div>
+        <div class="multi-mid"><span class="level-badge">第{{ level }}关</span> <span class="room-tag">{{ roomCode }}</span></div>
+        <div class="multi-right">
+          <span class="dot r"></span>
+          <span class="name">{{ oppNickname }}</span>
+          <span class="turn" :class="!isMyTurn ? 'on' : 'off'">{{ !isMyTurn ? '出手' : '等待' }}</span>
+        </div>
+      </div>
+      <div class="wrap">
+        <div class="container" :style="containerStyle">
+          <div class="card-wrap"
+            v-for="(item, index) in cards"
+            :key="item.id"
+            :style="setCardStyle(item)">
+            <div class="card"
+              :class="[item.not && 'is-allow', item.clear && 'clearing', item.display && 'hidden']"
+              :style="setAnimation(item)"
+              @click="handleCardClick(index)">
+              <span>{{ item.icon }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="showResult" class="result-mask">
+        <div class="result-box">
+          <div class="result-icon">{{ resultWon ? '🎉' : '😢' }}</div>
+          <div class="result-text">{{ resultWon ? '通关成功！' : '游戏失败' }}</div>
+          <div class="result-sub">{{ resultMessage }}</div>
+          <button class="mp-btn" @click="backToLobby">返回大厅</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    var socket = null
+
+    var App = {
+      setup: function () {
+        var page = Vue.ref('mode')
+        var nickname = Vue.ref('')
+        var joinCode = Vue.ref('')
+        var roomCode = Vue.ref('')
+        var isHost = Vue.ref(false)
+        var players = Vue.ref([])
+        var iAmReady = Vue.ref(false)
+        var isMyTurn = Vue.ref(false)
+        var myNickname = Vue.ref('')
+        var oppNickname = Vue.ref('')
+        var cards = Vue.ref([])
+        var level = Vue.ref(1)
+        var showResult = Vue.ref(false)
+        var resultWon = Vue.ref(false)
+        var resultMessage = Vue.ref('')
+        var config = Vue.reactive({
+          base: 48, row: 7, col: 7,
+          selectMaxLength: 7, maxCount: 3,
+          animationTime: 400, maxLevel: 10
+        })
+
+        var allReady = Vue.computed(function () {
+          return players.value.length === 2 && players.value.every(function (p) { return p.ready })
+        })
+
+        var gridH = Vue.computed(function () { return config.row * config.base })
+        var slotY = Vue.computed(function () { return gridH.value + 8 })
+        var containerStyle = Vue.computed(function () {
+          var h = slotY.value + config.base + 12
+          var w = config.col * config.base + 8
+          return 'height:' + h + 'px;width:' + w + 'px'
+        })
+
+        function setCardStyle(item) {
+          return 'transform:translateX(' + item.x + 'px)translateY(' + item.y + 'px)'
+        }
+
+        function setAnimation(item) {
+          var s = ''
+          if (item.clear) s += 'animation:scaleDraw ' + config.animationTime + 'ms;'
+          if (item.display) s += 'display:none;'
+          return s
+        }
+
+        var elimTimer = null
+
+        function getUrl() {
+          var loc = window.location
+          if (loc.hostname === 'localhost' || loc.hostname === '127.0.0.1') return 'http://localhost:3000'
+          return loc.origin
+        }
+
+        function conn(cb) {
+          if (socket && socket.connected) { if (cb) cb(); return }
+          socket = io(getUrl(), { transports: ['websocket', 'polling'] })
+          socket.on('connect', function () { if (cb) cb() })
+          socket.on('disconnect', function () {
+            if (page.value === 'game' || page.value === 'waiting') {
+              alert('与服务器断开'); cleanup(); resetVars()
+            }
+          })
+          socket.on('error_msg', function (d) { alert(d.message) })
+        }
+
+        function setupListeners() {
+          socket.on('game_started', function (d) {
+            applyState(d.gameState)
+            isMyTurn.value = d.currentPlayer === socket.id
+            myNickname.value = (d.players.find(function (p) { return p.id === socket.id }) || {}).nickname || ''
+            oppNickname.value = (d.players.find(function (p) { return p.id !== socket.id }) || {}).nickname || ''
+            level.value = d.gameState.level || 1
+            page.value = 'game'
+          })
+          socket.on('card_clicked', function (d) {
+            applyState(d.gameState)
+            isMyTurn.value = d.nextTurn === socket.id
+          })
+          socket.on('level_up', function (d) {
+            applyState(d.gameState)
+            isMyTurn.value = d.nextTurn === socket.id
+            level.value = d.gameState.level || 1
+          })
+          socket.on('game_over', function (d) {
+            if (elimTimer) clearTimeout(elimTimer)
+            resultWon.value = d.winner === socket.id
+            resultMessage.value = resultWon.value ? '协作通关！所有卡片已消除' : (d.winnerNickname || '对方') + ' 操作失误'
+            showResult.value = true
+          })
+          socket.on('opponent_disconnected', function () {
+            alert('对方已断开')
+            if (socket) { socket.disconnect(); socket = null }
+            resetVars(); page.value = 'mode'
+          })
+        }
+
+        function applyState(gs) {
+          if (!gs || !gs.cards) return
+          if (elimTimer) clearTimeout(elimTimer)
+
+          var prevClear = []
+          cards.value.forEach(function (c, i) {
+            if (c.clear && !c.display) prevClear.push(i)
+          })
+
+          cards.value = gs.cards.map(function (sc) {
+            return {
+              id: sc.id, icon: sc.icon, x: sc.x, y: sc.y,
+              not: sc.not, status: sc.status, clear: sc.clear, display: sc.display
+            }
+          })
+
+          var newClear = []
+          cards.value.forEach(function (c, i) {
+            if (prevClear.indexOf(i) === -1 && c.clear && c.display) {
+              newClear.push(i)
+            }
+          })
+
+          if (newClear.length) {
+            newClear.forEach(function (i) {
+              if (cards.value[i]) {
+                cards.value[i].clear = true
+                cards.value[i].display = false
+              }
+            })
+            elimTimer = setTimeout(function () {
+              newClear.forEach(function (i) {
+                if (cards.value[i]) cards.value[i].display = true
+              })
+              elimTimer = null
+            }, config.animationTime)
+          }
+        }
+
+        function createRoom() {
+          conn(function () {
+            isHost.value = true
+            socket.emit('create_room', { nickname: nickname.value.trim() })
+            socket.on('room_created', function (d) {
+              roomCode.value = d.code; players.value = d.players
+              setupListeners()
+              page.value = 'waiting'
+              socket.on('player_joined', function (d2) { players.value = d2.players })
+              socket.on('player_ready_update', function (d2) { players.value = d2.players })
+            })
+          })
+        }
+
+        function joinRoom() {
+          if (!joinCode.value.trim()) { alert('输入房间号'); return }
+          conn(function () {
+            isHost.value = false
+            socket.emit('join_room', { code: joinCode.value.trim().toUpperCase(), nickname: nickname.value.trim() })
+            socket.on('player_joined', function (d) {
+              roomCode.value = joinCode.value.trim().toUpperCase(); players.value = d.players
+              setupListeners()
+              page.value = 'waiting'
+              socket.on('player_joined', function (d2) { players.value = d2.players })
+              socket.on('player_ready_update', function (d2) { players.value = d2.players })
+            })
+          })
+        }
+
+        function toggleReady() {
+          iAmReady.value = !iAmReady.value; socket.emit('player_ready', { ready: iAmReady.value })
+        }
+
+        function startGame() {
+          socket.emit('start_game', { level: 1, base: 48, row: 7, col: 7, maxCount: 3, selectMaxLength: 7, animationTime: 400, maxLevel: 10, slotY: slotY.value })
+        }
+
+        function handleCardClick(index) {
+          if (!isMyTurn.value) return; socket.emit('card_click', { cardIndex: index })
+        }
+
+        function cleanup() {
+          if (elimTimer) clearTimeout(elimTimer)
+          if (socket) {
+            socket.off('connect'); socket.off('disconnect'); socket.off('error_msg')
+            socket.off('game_started'); socket.off('card_clicked'); socket.off('level_up'); socket.off('game_over')
+            socket.off('opponent_disconnected'); socket.off('player_joined'); socket.off('player_ready_update')
+            socket.off('room_created'); socket.disconnect(); socket = null
+          }
+        }
+
+        function resetVars() {
+          roomCode.value = ''; isHost.value = false; players.value = []; iAmReady.value = false
+          isMyTurn.value = false; myNickname.value = ''; oppNickname.value = ''
+          cards.value = []; level.value = 1; showResult.value = false
+        }
+
+        function leaveRoom() { cleanup(); resetVars(); page.value = 'room' }
+        function backToLobby() { cleanup(); resetVars(); page.value = 'mode' }
+
+        return {
+          page, nickname, joinCode, roomCode, isHost, players,
+          iAmReady, isMyTurn, myNickname, oppNickname,
+          cards, level, showResult, resultWon, resultMessage,
+          config, allReady, containerStyle,
+          setCardStyle, setAnimation,
+          createRoom, joinRoom, toggleReady, startGame,
+          handleCardClick, leaveRoom, backToLobby
+        }
+      }
+    }
+
+    Vue.createApp(App).mount('#app')
+  </script>
+</body>
+</html>
