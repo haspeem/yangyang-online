@@ -297,21 +297,14 @@ body {
 .turn.on { background: #2ecc71; color: #1a1a2e; }
 .turn.off { background: #555; color: #ccc; }
 
-/* ========== Slot area inside container ========== */
-.container {
-  position: relative;
-  overflow: hidden;
-}
-.container::after {
-  content: '';
-  position: absolute;
-  left: 4px;
-  right: 4px;
-  bottom: 6px;
-  height: 52px;
+/* ========== Card slot below container ========== */
+.card-slot {
   background: #0f3460;
   border-radius: 8px;
-  pointer-events: none;
+  height: 52px;
+  margin: 0 auto;
+  border: none;
+  padding: 0;
 }
 
 /* ========== Result Overlay ========== */

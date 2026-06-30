@@ -84,19 +84,20 @@
         </div>
       </div>
       <div class="wrap">
-        <div class="container" :style="containerStyle">
-          <div class="card-wrap"
-            v-for="(item, index) in cards"
-            :key="item.id"
-            :style="setCardStyle(item)">
-            <div class="card"
-              :class="[item.not && 'is-allow', item.clear && 'clearing', item.display && 'hidden']"
-              :style="setAnimation(item)"
-              @click="handleCardClick(index)">
-              <span>{{ item.icon }}</span>
+          <div class="container" :style="containerStyle">
+            <div class="card-wrap"
+              v-for="(item, index) in cards"
+              :key="item.id"
+              :style="setCardStyle(item)">
+              <div class="card"
+                :class="[item.not && 'is-allow', item.clear && 'clearing', item.display && 'hidden']"
+                :style="setAnimation(item)"
+                @click="handleCardClick(index)">
+                <span>{{ item.icon }}</span>
+              </div>
             </div>
           </div>
-        </div>
+          <div class="card-slot" :style="'width:' + (config.col * config.base + 8) + 'px'"></div>
       </div>
 
       <div v-if="showResult" class="result-mask">
@@ -141,11 +142,9 @@
           return players.value.length === 2 && players.value.every(function (p) { return p.ready })
         })
 
-        var gridH = Vue.computed(function () { return config.row * config.base })
-        var slotY = Vue.computed(function () { return gridH.value + 8 })
         var containerStyle = Vue.computed(function () {
-          var h = slotY.value + config.base + 12
           var w = config.col * config.base + 8
+          var h = config.row * config.base + 8
           return 'height:' + h + 'px;width:' + w + 'px'
         })
 
@@ -284,7 +283,7 @@
         }
 
         function startGame() {
-          socket.emit('start_game', { level: 1, base: 48, row: 7, col: 7, maxCount: 3, selectMaxLength: 7, animationTime: 400, maxLevel: 10, slotY: slotY.value })
+          socket.emit('start_game', { level: 1, base: 48, row: 7, col: 7, maxCount: 3, selectMaxLength: 7, animationTime: 400, maxLevel: 10, slotY: config.row * config.base + 8 })
         }
 
         function handleCardClick(index) {
